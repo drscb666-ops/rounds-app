@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rounds — MBBS Lecture Log</title>
+<meta name="description" content="Track your MBBS video lecture watching, by subject, with analytics.">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F6F6B">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rounds">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+  :root {
+    --bg: #F3F5F2;
+    --surface: #FFFFFF;
+    --ink: #182726;
+    --ink-soft: #5B6C67;
+    --teal: #2F6F6B;
+    --ochre: #C08A28;
+    --line: #DEE4DF;
+    --danger: #A6553C;
+    --font-head: 'Source Serif 4', Georgia, serif;
+    --font-body: 'IBM Plex Sans', -apple-system, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font-body);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    width: 100%; max-width: 480px; margin: 0 auto; min-height: 100dvh;
+    display: flex; flex-direction: column; background: var(--bg);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .spin { animation: spin-kf 0.9s linear infinite; display: inline-block; }
+  @keyframes spin-kf { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+
+  .banner { background: #FBEFE9; color: var(--danger); font-size: 12.5px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+
+  .rl-body { flex: 1; overflow-y: auto; padding: 16px; }
+
+  .rl-header { padding: max(20px, env(safe-area-inset-top)) 20px 14px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .rl-header-top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .rl-title { font-family: var(--font-head); font-size: 22px; font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  .rl-sub { font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+  .rl-signout { font-size: 12px; color: var(--ink-soft); cursor: pointer; margin-top: 4px; }
+  .rl-stats { display: flex; align-items: baseline; gap: 22px; margin-top: 16px; }
+  .rl-stat-num { font-family: var(--font-head); font-size: 34px; font-weight: 600; line-height: 1; }
+  .rl-stat-label { font-size: 11.5px; color: var(--ink-soft); margin-top: 4px; }
+  .rl-streak { display: flex; align-items: center; gap: 5px; color: var(--ochre); font-size: 14px; font-weight: 500; }
+
+  .rl-tabbar { display: flex; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .rl-tab { flex: 1; padding: 12px 0; text-align: center; font-size: 13.5px; font-weight: 500; color: var(--ink-soft); background: none; border: none; cursor: pointer; position: relative; font-family: var(--font-body); }
+  .rl-tab.active { color: var(--teal); }
+  .rl-tab.active::after { content: ''; position: absolute; bottom: -1px; left: 22%; right: 22%; height: 2px; background: var(--teal); border-radius: 2px; }
+
+  .rl-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .rl-section-label { font-size: 12px; color: var(--ink-soft); font-weight: 500; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+
+  .rl-field { margin-bottom: 14px; }
+  .rl-field label { display: block; font-size: 12.5px; color: var(--ink-soft); margin-bottom: 6px; }
+  .rl-input {
+    width: 100%; padding: 10px 11px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 14.5px; font-family: var(--font-body); color: var(--ink); background: var(--surface);
+  }
+  .rl-input:focus { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
+
+  .rl-chip-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .rl-chip {
+    padding: 7px 13px; border-radius: 20px; border: 1px solid var(--line); background: var(--surface);
+    font-size: 13px; color: var(--ink); cursor: pointer; display: flex; align-items: center; gap: 6px; user-select: none;
+  }
+  .rl-chip.selected { color: white; }
+  .rl-chip.ghost { border-style: dashed; color: var(--ink-soft); }
+  .rl-chip.small { padding: 5px 11px; font-size: 12.5px; }
+
+  .rl-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+
+  .rl-btn {
+    width: 100%; padding: 12px; border-radius: 8px; border: none; background: var(--teal); color: white;
+    font-size: 14.5px; font-weight: 500; cursor: pointer; font-family: var(--font-body);
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .rl-btn:disabled { background: #B9C4C1; cursor: not-allowed; }
+  .rl-btn.link { background: none; color: var(--teal); font-size: 13px; padding: 8px; }
+
+  .rl-row2 { display: flex; gap: 10px; }
+  .rl-row2 > div { flex: 1; }
+
+  .rl-entry { display: flex; align-items: flex-start; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .rl-entry:last-child { border-bottom: none; }
+  .rl-entry .rl-dot { margin-top: 5px; }
+  .rl-entry-title { font-size: 14px; font-weight: 500; }
+  .rl-entry-meta { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+  .rl-del-btn { background: none; border: none; color: var(--ink-soft); cursor: pointer; padding: 4px; flex-shrink: 0; }
+  .rl-del-btn.confirm { color: var(--danger); }
+
+  .rl-day-heading { font-size: 12px; font-weight: 600; color: var(--ink-soft); margin: 18px 0 4px; }
+  .rl-day-heading:first-child { margin-top: 0; }
+
+  .rl-empty { text-align: center; padding: 40px 20px; color: var(--ink-soft); font-size: 13.5px; }
+
+  .rl-period-row { display: flex; gap: 6px; margin-bottom: 16px; }
+  .rl-period-btn {
+    flex: 1; padding: 8px 0; border-radius: 8px; border: 1px solid var(--line); background: var(--surface);
+    font-size: 12.5px; color: var(--ink-soft); cursor: pointer; font-family: var(--font-body);
+  }
+  .rl-period-btn.active { background: var(--ink); border-color: var(--ink); color: white; }
+
+  .rl-legend-item { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; font-size: 13px; }
+  .rl-legend-left { display: flex; align-items: center; gap: 8px; }
+  .rl-legend-val { color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+
+  .card-gap { margin-bottom: 14px; }
+
+  .install-hint {
+    display: none; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    padding: 12px 14px; font-size: 12.5px; color: var(--ink-soft); margin: 12px 16px 0;
+  }
+  .install-hint.show { display: block; }
+  .install-hint b { color: var(--ink); }
+
+  .auth-wrap { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; }
+  .auth-title { font-family: var(--font-head); font-size: 26px; font-weight: 600; margin: 0 0 4px; }
+  .auth-sub { font-size: 13px; color: var(--ink-soft); margin-bottom: 24px; }
+  .auth-error { background: #FBEFE9; color: var(--danger); font-size: 12.5px; padding: 9px 12px; border-radius: 8px; margin-bottom: 12px; }
+  .auth-toggle { text-align: center; font-size: 13px; color: var(--ink-soft); margin-top: 14px; }
+  .auth-toggle span { color: var(--teal); cursor: pointer; font-weight: 500; }
+  .config-warning { text-align: center; padding: 40px 24px; color: var(--ink-soft); font-size: 13.5px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="installHint" class="install-hint">
+  <b>Install this app:</b> tap the Share icon, then "Add to Home Screen" (iPhone/iPad), or use your browser menu → "Install app" (Android/desktop Chrome).
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const PALETTE = ["#2F6F6B", "#C08A28", "#6B4C6B", "#4C6B8A", "#A6553C", "#7A8B5E", "#8A5A6B", "#3D6B4C"];
+const WEEKDAY = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function esc(s){ const d=document.createElement('div'); d.textContent = s ?? ""; return d.innerHTML; }
+function nowLocalISO() {
+  const d = new Date(); const off = d.getTimezoneOffset();
+  return new Date(d.getTime() - off*60000).toISOString().slice(0,16);
+}
+function dateKey(d){ const dt=new Date(d); return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,"0")}-${String(dt.getDate()).padStart(2,"0")}`; }
+function startOfDay(d){ const dt=new Date(d); dt.setHours(0,0,0,0); return dt; }
+function formatDuration(min){ min=Math.round(min); if(min<60) return `${min}m`; const h=Math.floor(min/60), m=min%60; return m?`${h}h ${m}m`:`${h}h`; }
+function formatHoursShort(min){ return (min/60).toFixed(1); }
+
+/* ---------- state ---------- */
+let subjects = [];
+let entries = [];
+let tab = "log";
+let period = "week";
+let selectedSubjectId = "";
+let hours = 0, minutes = 30;
+let completedAt = nowLocalISO();
+let addingSubject = false;
+let managingSubjects = false;
+let pendingDeleteEntryId = null;
+let pieChart = null, barChart = null;
+let currentUser = null;
+let authMode = "signin";
+let authError = "";
+let authBusy = false;
+let unsubSubjects = null, unsubEntries = null;
+
+/* ---------- icons ---------- */
+const ICONS = {
+  plus: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>`,
+  x: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  check: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  trash: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></path></svg>`,
+  flame: `<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c1 4-4 5-4 9a4 4 0 0 0 8 0c1.5 1 2 2.6 2 4a6 6 0 1 1-12 0c0-5 3-8 6-13z"/></svg>`,
+  book: `<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#DEE4DF" stroke-width="1.8"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
+};
+
+/* ---------- firebase ---------- */
+let auth = null, db = null, firebaseReady = false;
+try {
+  if (typeof firebaseConfig !== "undefined" && firebaseConfig.apiKey && firebaseConfig.apiKey !== "YOUR_API_KEY") {
+    firebase.initializeApp(firebaseConfig);
+    auth = firebase.auth();
+    db = firebase.firestore();
+    try { db.enablePersistence({ synchronizeTabs: true }); } catch (e) {}
+    firebaseReady = true;
+  }
+} catch (e) { firebaseReady = false; }
+
+function attachListeners(uid) {
+  detachListeners();
+  unsubSubjects = db.collection("users").doc(uid).collection("subjects").orderBy("createdAt", "asc")
+    .onSnapshot((snap) => {
+      subjects = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      renderApp();
+    });
+  unsubEntries = db.collection("users").doc(uid).collection("entries").orderBy("completedAt", "desc")
+    .onSnapshot((snap) => {
+      entries = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+      renderApp();
+    });
+}
+function detachListeners() {
+  if (unsubSubjects) { unsubSubjects(); unsubSubjects = null; }
+  if (unsubEntries) { unsubEntries(); unsubEntries = null; }
+}
+
+function addSubject(name){
+  const trimmed = name.trim();
+  if (!trimmed || !currentUser) return;
+  if (subjects.some(s => s.name.toLowerCase() === trimmed.toLowerCase())) return;
+  db.collection("users").doc(currentUser.uid).collection("subjects").add({
+    name: trimmed, color: PALETTE[subjects.length % PALETTE.length],
+    createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+  });
+}
+function deleteSubject(id){
+  if (!currentUser) return;
+  if (entries.some(e => e.subjectId === id)) return;
+  db.collection("users").doc(currentUser.uid).collection("subjects").doc(id).delete();
+}
+function addEntry(e){
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).collection("entries").add(e);
+}
+function deleteEntry(id){
+  if (!currentUser) return;
+  db.collection("users").doc(currentUser.uid).collection("entries").doc(id).delete();
+}
+
+function totalMinutesAll(){ return entries.reduce((a,e)=>a+e.durationMin,0); }
+function computeStreak(){
+  const days = new Set(entries.map(e => dateKey(e.completedAt)));
+  let count = 0, cursor = startOfDay(new Date());
+  while (days.has(dateKey(cursor))) { count++; cursor = new Date(cursor.getTime() - 86400000); }
+  return count;
+}
+
+/* ---------- auth screen ---------- */
+function renderAuth(){
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="auth-wrap">
+      <div class="auth-title">Rounds</div>
+      <div class="auth-sub">${authMode === "signin" ? "Sign in to sync your lecture log." : "Create an account to sync across devices."}</div>
+      ${authError ? `<div class="auth-error">${esc(authError)}</div>` : ""}
+      <div class="rl-field">
+        <label>Email</label>
+        <input class="rl-input" id="authEmail" type="email" autocomplete="email" placeholder="you@example.com" />
+      </div>
+      <div class="rl-field">
+        <label>Password</label>
+        <input class="rl-input" id="authPassword" type="password" autocomplete="${authMode === "signin" ? "current-password" : "new-password"}" placeholder="At least 6 characters" />
+      </div>
+      <button class="rl-btn" id="authSubmit" ${authBusy ? "disabled" : ""}>
+        ${authBusy ? "Please wait…" : (authMode === "signin" ? "Sign in" : "Create account")}
+      </button>
+      <div class="auth-toggle">
+        ${authMode === "signin" ? `New here? <span id="authToggle">Create an account</span>` : `Already have an account? <span id="authToggle">Sign in</span>`}
+      </div>
+    </div>
+  `;
+  document.getElementById("authToggle").addEventListener("click", () => { authMode = authMode === "signin" ? "signup" : "signin"; authError = ""; renderAuth(); });
+  document.getElementById("authSubmit").addEventListener("click", handleAuthSubmit);
+  document.getElementById("authPassword").addEventListener("keydown", (e) => { if (e.key === "Enter") handleAuthSubmit(); });
+}
+
+async function handleAuthSubmit(){
+  const email = document.getElementById("authEmail").value.trim();
+  const password = document.getElementById("authPassword").value;
+  if (!email || password.length < 6) { authError = "Enter an email and a password of at least 6 characters."; renderAuth(); return; }
+  authBusy = true; authError = ""; renderAuth();
+  try {
+    if (authMode === "signin") await auth.signInWithEmailAndPassword(email, password);
+    else await auth.createUserWithEmailAndPassword(email, password);
+  } catch (err) {
+    authError = err.message || "Something went wrong. Try again.";
+  }
+  authBusy = false;
+  renderAuth();
+}
+
+function renderConfigWarning(){
+  document.getElementById("app").innerHTML = `
+    <div class="config-warning">
+      <b style="color:var(--ink);">Backend not connected yet.</b><br/><br/>
+      Open <b>firebase-config.js</b> and paste in your Firebase project's config values, then reload this page. See the setup steps that came with this file.
+    </div>
+  `;
+}
+
+/* ---------- app render ---------- */
+function renderApp(){
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="rl-header">
+      <div class="rl-header-top">
+        <div>
+          <h1 class="rl-title">Rounds</h1>
+          <div class="rl-sub">${esc(currentUser.email)}</div>
+        </div>
+        <div class="rl-signout" id="signOutBtn">Sign out</div>
+      </div>
+      <div class="rl-stats">
+        <div><div class="rl-stat-num">${formatHoursShort(totalMinutesAll())}</div><div class="rl-stat-label">hours watched</div></div>
+        <div><div class="rl-stat-num">${entries.length}</div><div class="rl-stat-label">lectures</div></div>
+        ${computeStreak() > 0 ? `<div class="rl-streak">${ICONS.flame} ${computeStreak()}d streak</div>` : ""}
+      </div>
+    </div>
+    <div class="rl-tabbar">
+      ${["log","history","analyze"].map(t => `<button class="rl-tab ${tab===t?"active":""}" data-tab="${t}">${t[0].toUpperCase()+t.slice(1)}</button>`).join("")}
+    </div>
+    <div class="rl-body" id="rlBody"></div>
+  `;
+  document.querySelectorAll("[data-tab]").forEach(el => el.addEventListener("click", () => { tab = el.dataset.tab; render(); }));
+  document.getElementById("signOutBtn").addEventListener("click", () => auth.signOut());
+  renderBody();
+}
+
+function renderBody(){
+  const body = document.getElementById("rlBody");
+  if (tab === "log") body.innerHTML = logTabHTML();
+  else if (tab === "history") body.innerHTML = historyTabHTML();
+  else body.innerHTML = analyzeTabHTML();
+  attachHandlers();
+}
+
+function logTabHTML(){
+  const durationMin = hours*60 + minutes;
+  return `
+    <div class="rl-card card-gap">
+      <div class="rl-section-label">
+        <span>Subjects</span>
+        ${subjects.length ? `<span id="editSubjectsBtn" style="color:var(--teal);cursor:pointer;font-weight:500;">${managingSubjects?"Done":"Edit"}</span>` : ""}
+      </div>
+      <div class="rl-chip-row">
+        ${subjects.map(s => `
+          <span class="rl-chip subj-chip" data-id="${s.id}" style="${selectedSubjectId===s.id?`background:${s.color};border-color:${s.color};color:white;`:""}">
+            <span class="rl-dot" style="background:${selectedSubjectId===s.id?"white":s.color}"></span>
+            ${esc(s.name)}
+            ${managingSubjects ? `<span class="del-subj" data-id="${s.id}" style="display:flex;margin-left:2px;">${ICONS.x}</span>` : ""}
+          </span>
+        `).join("")}
+        ${addingSubject ? `
+          <span class="rl-chip" style="padding:4px 6px 4px 12px; gap:6px;">
+            <input id="newSubjectInput" placeholder="Subject name" style="border:none;outline:none;font-size:13px;width:110px;font-family:var(--font-body);" />
+            <span id="confirmSubjectBtn" style="display:flex;color:var(--teal);cursor:pointer;">${ICONS.check}</span>
+            <span id="cancelSubjectBtn" style="display:flex;color:var(--ink-soft);cursor:pointer;">${ICONS.x}</span>
+          </span>
+        ` : `<span class="rl-chip ghost" id="addSubjectBtn">${ICONS.plus} Add subject</span>`}
+      </div>
+    </div>
+
+    <div class="rl-card">
+      <div class="rl-section-label"><span>Log a completed lecture</span></div>
+      <div class="rl-field">
+        <label>Lecture title</label>
+        <input class="rl-input" id="titleInput" placeholder="e.g. Cardiac cycle — physiology" value="${esc(window.__title || "")}" />
+      </div>
+      <div class="rl-field">
+        <label>Duration watched</label>
+        <div class="rl-chip-row" style="margin-bottom:8px;">
+          ${[15,30,45,60,90].map(m => `<span class="rl-chip small dur-chip" data-m="${m}" style="${hours===0&&minutes===m?"background:var(--teal);border-color:var(--teal);color:white;":""}">${m}m</span>`).join("")}
+        </div>
+        <div class="rl-row2">
+          <div><input class="rl-input" type="number" min="0" id="hoursInput" placeholder="Hours" value="${hours}" /></div>
+          <div><input class="rl-input" type="number" min="0" max="59" id="minutesInput" placeholder="Minutes" value="${minutes}" /></div>
+        </div>
+      </div>
+      <div class="rl-field">
+        <label>Completed on</label>
+        <input class="rl-input" type="datetime-local" id="completedAtInput" value="${completedAt}" />
+      </div>
+      <button class="rl-btn" id="saveEntryBtn" ${(!selectedSubjectId || durationMin<=0) ? "disabled" : ""}>${ICONS.check} Save entry</button>
+    </div>
+  `;
+}
+
+function historyTabHTML(){
+  const sorted = [...entries].sort((a,b) => new Date(b.completedAt) - new Date(a.completedAt));
+  if (sorted.length === 0) return `<div class="rl-empty">${ICONS.book}<div style="margin-top:10px;">No lectures logged yet. Finish one and add it from the Log tab.</div></div>`;
+  const subjectMap = Object.fromEntries(subjects.map(s => [s.id, s]));
+  const groups = [];
+  let lastKey = null;
+  sorted.forEach(e => {
+    const k = dateKey(e.completedAt);
+    if (k !== lastKey) { groups.push({ key: k, date: new Date(e.completedAt), items: [] }); lastKey = k; }
+    groups[groups.length-1].items.push(e);
+  });
+  const todayKey = dateKey(new Date());
+  const yestKey = dateKey(new Date(Date.now() - 86400000));
+  return `<div class="rl-card">
+    ${groups.map(g => `
+      <div class="rl-day-heading">${g.key===todayKey?"Today":g.key===yestKey?"Yesterday":g.date.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"numeric"})}</div>
+      ${g.items.map(e => {
+        const subj = subjectMap[e.subjectId];
+        return `<div class="rl-entry">
+          <span class="rl-dot" style="background:${subj?subj.color:"#999"}"></span>
+          <div style="flex:1;">
+            <div class="rl-entry-title">${esc(e.title)}</div>
+            <div class="rl-entry-meta">${subj?esc(subj.name):"Unknown subject"} · ${formatDuration(e.durationMin)} · ${new Date(e.completedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</div>
+          </div>
+          <button class="rl-del-btn ${pendingDeleteEntryId===e.id?"confirm":""}" data-id="${e.id}" title="${pendingDeleteEntryId===e.id?"Tap again to confirm":"Delete"}">${ICONS.trash}</button>
+        </div>`;
+      }).join("")}
+    `).join("")}
+  </div>`;
+}
+
+function getMonday(d){
+  const dt = new Date(d);
+  const day = dt.getDay(); // 0=Sun..6=Sat
+  const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
+  dt.setDate(dt.getDate() + diff);
+  dt.setHours(0,0,0,0);
+  return dt;
+}
+function formatShortDate(d){ return d.toLocaleDateString(undefined,{month:"short", day:"numeric"}); }
+function getRangeStart(p){
+  const now = new Date();
+  if (p==="today") return startOfDay(now);
+  if (p==="week") return getMonday(now);
+  if (p==="month") return new Date(now.getFullYear(), now.getMonth(), 1);
+  return new Date(0);
+}
+function periodHeaderText(p){
+  if (p === "week") {
+    const monday = getMonday(new Date());
+    const sunday = new Date(monday.getTime() + 6*86400000);
+    return `Watched, ${formatShortDate(monday)} – ${formatShortDate(sunday)}`;
+  }
+  const labelMap = { today: "today", month: "this month", all: "all time" };
+  return `Watched, ${labelMap[p]}`;
+}
+function getTrendData(p, filtered){
+  const now = new Date();
+  if (p==="today"){
+    const blocks = [{label:"Night",from:0,to:6},{label:"Morning",from:6,to:12},{label:"Afternoon",from:12,to:18},{label:"Evening",from:18,to:24}];
+    return blocks.map(b => ({ label: b.label, minutes: filtered.reduce((sum,e)=>{ const h=new Date(e.completedAt).getHours(); return (h>=b.from&&h<b.to)?sum+e.durationMin:sum; },0) }));
+  }
+  if (p==="week"){
+    const monday = getMonday(now);
+    const days = [];
+    for (let i=0;i<7;i++){ const d=new Date(monday.getTime()+i*86400000); days.push({key:dateKey(d), label:WEEKDAY[d.getDay()]}); }
+    return days.map(d => ({ label: d.label, minutes: filtered.reduce((sum,e)=> dateKey(e.completedAt)===d.key?sum+e.durationMin:sum,0) }));
+  }
+  if (p==="month"){
+    const buckets=[0,0,0,0,0];
+    filtered.forEach(e => { const day=new Date(e.completedAt).getDate(); const idx=Math.min(4,Math.floor((day-1)/7)); buckets[idx]+=e.durationMin; });
+    return buckets.map((minutes,i)=>({label:`Wk ${i+1}`, minutes}));
+  }
+  const map = {};
+  filtered.forEach(e => { const d=new Date(e.completedAt); const key=`${d.getFullYear()}-${d.getMonth()}`; map[key]=(map[key]||0)+e.durationMin; });
+  const keys = Object.keys(map).sort((a,b)=>{ const [ya,ma]=a.split("-").map(Number), [yb,mb]=b.split("-").map(Number); return ya-yb || ma-mb; });
+  return keys.slice(-12).map(k => { const [y,m]=k.split("-").map(Number); return { label:`${MONTH_SHORT[m]} '${String(y).slice(2)}`, minutes: map[k] }; });
+}
+
+function analyzeTabHTML(){
+  if (entries.length === 0) return `<div class="rl-empty">${ICONS.book}<div style="margin-top:10px;">Log a few lectures and your breakdown will show up here.</div></div>`;
+  const start = getRangeStart(period);
+  const filtered = entries.filter(e => new Date(e.completedAt) >= start);
+  const totalMin = filtered.reduce((a,e)=>a+e.durationMin,0);
+  const subjectMap = Object.fromEntries(subjects.map(s => [s.id, s]));
+  const map = {};
+  filtered.forEach(e => { map[e.subjectId] = (map[e.subjectId]||0) + e.durationMin; });
+  const pieData = Object.entries(map).map(([id,minutes]) => ({ id, name: subjectMap[id]?.name||"Unknown", minutes, color: subjectMap[id]?.color||"#999" })).sort((a,b)=>b.minutes-a.minutes);
+  const labelMap = { today:"Today", week:"Week", month:"Month", all:"Total" };
+
+  let html = `
+    <div class="rl-period-row">
+      ${["today","week","month","all"].map(p => `<button class="rl-period-btn ${period===p?"active":""}" data-period="${p}">${labelMap[p]}</button>`).join("")}
+    </div>
+    <div class="rl-card card-gap">
+      <div class="rl-section-label"><span>${periodHeaderText(period)}</span></div>
+      <div class="rl-stat-num" style="font-size:30px;">${formatDuration(totalMin)}</div>
+    </div>
+  `;
+  if (filtered.length === 0) {
+    html += `<div class="rl-empty">Nothing logged in this period yet.</div>`;
+  } else {
+    html += `
+      <div class="rl-card card-gap">
+        <div class="rl-section-label"><span>By subject</span></div>
+        <div style="height:200px;"><canvas id="pieCanvas"></canvas></div>
+        <div style="margin-top:4px;">
+          ${pieData.map(d => `<div class="rl-legend-item">
+            <div class="rl-legend-left"><span class="rl-dot" style="background:${d.color}"></span>${esc(d.name)}</div>
+            <div class="rl-legend-val">${formatDuration(d.minutes)} · ${Math.round((d.minutes/totalMin)*100)}%</div>
+          </div>`).join("")}
+        </div>
+      </div>
+      <div class="rl-card">
+        <div class="rl-section-label"><span>Trend</span></div>
+        <div style="height:180px;"><canvas id="barCanvas"></canvas></div>
+      </div>
+    `;
+  }
+  setTimeout(() => drawCharts(pieData, getTrendData(period, filtered)), 0);
+  return html;
+}
+
+function drawCharts(pieData, trendData){
+  if (pieChart) { pieChart.destroy(); pieChart = null; }
+  if (barChart) { barChart.destroy(); barChart = null; }
+  const pieEl = document.getElementById("pieCanvas");
+  if (pieEl) {
+    pieChart = new Chart(pieEl, {
+      type: "doughnut",
+      data: { labels: pieData.map(d=>d.name), datasets: [{ data: pieData.map(d=>d.minutes), backgroundColor: pieData.map(d=>d.color), borderColor: "#fff", borderWidth: 2 }] },
+      options: { plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${formatDuration(ctx.raw)}` } } }, cutout: "58%", maintainAspectRatio: false }
+    });
+  }
+  const barEl = document.getElementById("barCanvas");
+  if (barEl) {
+    barChart = new Chart(barEl, {
+      type: "bar",
+      data: { labels: trendData.map(d=>d.label), datasets: [{ data: trendData.map(d=>d.minutes), backgroundColor: "#2F6F6B", borderRadius: 4, maxBarThickness: 34 }] },
+      options: {
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => formatDuration(ctx.raw) } } },
+        scales: {
+          x: { grid: { display: false }, ticks: { font: { family: "IBM Plex Sans", size: 11 }, color: "#5B6C67" } },
+          y: { grid: { color: "#EAEEEA" }, ticks: { font: { family: "IBM Plex Sans", size: 11 }, color: "#5B6C67", callback: (v) => `${Math.round(v/60)}h` } }
+        }
+      }
+    });
+  }
+}
+
+/* ---------- event handlers ---------- */
+function attachHandlers(){
+  if (tab === "log") {
+    const editBtn = document.getElementById("editSubjectsBtn");
+    if (editBtn) editBtn.addEventListener("click", () => { managingSubjects = !managingSubjects; renderBody(); });
+
+    document.querySelectorAll(".subj-chip").forEach(el => el.addEventListener("click", () => {
+      if (managingSubjects) return;
+      selectedSubjectId = el.dataset.id; renderBody();
+    }));
+    document.querySelectorAll(".del-subj").forEach(el => el.addEventListener("click", (ev) => {
+      ev.stopPropagation(); deleteSubject(el.dataset.id);
+    }));
+
+    const addBtn = document.getElementById("addSubjectBtn");
+    if (addBtn) addBtn.addEventListener("click", () => { addingSubject = true; renderBody(); setTimeout(()=>document.getElementById("newSubjectInput")?.focus(),0); });
+    const confirmBtn = document.getElementById("confirmSubjectBtn");
+    if (confirmBtn) confirmBtn.addEventListener("click", () => {
+      const val = document.getElementById("newSubjectInput").value;
+      addSubject(val); addingSubject = false; renderBody();
+    });
+    const newSubjInput = document.getElementById("newSubjectInput");
+    if (newSubjInput) newSubjInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { addSubject(e.target.value); addingSubject=false; renderBody(); } });
+    const cancelBtn = document.getElementById("cancelSubjectBtn");
+    if (cancelBtn) cancelBtn.addEventListener("click", () => { addingSubject = false; renderBody(); });
+
+    document.querySelectorAll(".dur-chip").forEach(el => el.addEventListener("click", () => {
+      hours = 0; minutes = Number(el.dataset.m); renderBody();
+    }));
+    const hoursInput = document.getElementById("hoursInput");
+    if (hoursInput) hoursInput.addEventListener("input", (e) => { hours = Math.max(0, Number(e.target.value)||0); document.getElementById("saveEntryBtn").disabled = !selectedSubjectId || (hours*60+minutes)<=0; });
+    const minutesInput = document.getElementById("minutesInput");
+    if (minutesInput) minutesInput.addEventListener("input", (e) => { minutes = Math.max(0, Math.min(59, Number(e.target.value)||0)); document.getElementById("saveEntryBtn").disabled = !selectedSubjectId || (hours*60+minutes)<=0; });
+    const completedAtInput = document.getElementById("completedAtInput");
+    if (completedAtInput) completedAtInput.addEventListener("input", (e) => { completedAt = e.target.value; });
+    const titleInput = document.getElementById("titleInput");
+    if (titleInput) titleInput.addEventListener("input", (e) => { window.__title = e.target.value; });
+
+    const saveBtn = document.getElementById("saveEntryBtn");
+    if (saveBtn) saveBtn.addEventListener("click", () => {
+      const title = (document.getElementById("titleInput").value || "").trim();
+      const durationMin = hours*60 + minutes;
+      if (!title || !selectedSubjectId || durationMin <= 0 || !completedAt) return;
+      addEntry({ title, subjectId: selectedSubjectId, durationMin, completedAt: new Date(completedAt).toISOString() });
+      window.__title = ""; hours = 0; minutes = 30; completedAt = nowLocalISO();
+      selectedSubjectId = selectedSubjectId;
+      renderBody();
+      document.getElementById("titleInput").value = "";
+    });
+  }
+
+  if (tab === "history") {
+    document.querySelectorAll(".rl-del-btn").forEach(el => el.addEventListener("click", () => {
+      const id = el.dataset.id;
+      if (pendingDeleteEntryId === id) { deleteEntry(id); pendingDeleteEntryId = null; }
+      else { pendingDeleteEntryId = id; renderBody(); }
+    }));
+  }
+
+  if (tab === "analyze") {
+    document.querySelectorAll("[data-period]").forEach(el => el.addEventListener("click", () => { period = el.dataset.period; renderBody(); }));
+  }
+}
+
+/* ---------- top-level render dispatch ---------- */
+function render(){
+  if (!firebaseReady) { renderConfigWarning(); return; }
+  if (!currentUser) { renderAuth(); return; }
+  renderApp();
+}
+
+/* ---------- install prompt ---------- */
+window.addEventListener("beforeinstallprompt", (e) => { e.preventDefault(); });
+const isStandalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone;
+if (!isStandalone) document.getElementById("installHint").classList.add("show");
+
+/* ---------- service worker ---------- */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => { navigator.serviceWorker.register("sw.js").catch(()=>{}); });
+}
+
+/* ---------- boot ---------- */
+if (!firebaseReady) {
+  renderConfigWarning();
+} else {
+  document.getElementById("app").innerHTML = `<div class="auth-wrap" style="align-items:center;"><span class="spin">⏳</span></div>`;
+  auth.onAuthStateChanged((user) => {
+    currentUser = user;
+    if (user) { attachListeners(user.uid); }
+    else { detachListeners(); subjects = []; entries = []; render(); }
+  });
+}
+</script>
+</body>
+</html>
