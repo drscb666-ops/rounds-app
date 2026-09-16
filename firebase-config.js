@@ -7,11 +7,34 @@
 // 6. In Firestore → Rules, paste the rules from firestore.rules.txt and Publish.
 // 7. Save this file and reload index.html.
 
+//const firebaseConfig = {
+//  apiKey: "YOUR_API_KEY",
+//  authDomain: "YOUR_PROJECT.firebaseapp.com",
+//  projectId: "YOUR_PROJECT",
+//  storageBucket: "YOUR_PROJECT.appspot.com",
+//  messagingSenderId: "YOUR_SENDER_ID",
+//  appId: "YOUR_APP_ID"
+// };
+
+// Import the functions you need from the SDKs you need
+// import { initializeApp } from "firebase/app";
+// import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCbUnsWR4_Sf4xJlSMqb40EfCFEHoxsImI",
+  authDomain: "rounds-49619.firebaseapp.com",
+  projectId: "rounds-49619",
+  storageBucket: "rounds-49619.firebasestorage.app",
+  messagingSenderId: "93998404010",
+  appId: "1:93998404010:web:69de8c043a733a1b065bd3",
+  measurementId: "G-MMEQ6KVZ71"
 };
+
+// Initialize Firebase
+// const app = initializeApp(firebaseConfig);
+// const analytics = getAnalytics(app);
